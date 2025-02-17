@@ -1,4 +1,5 @@
-# mathwiz
+# Fast Food Application
+
 
 A new Flutter project.
 
