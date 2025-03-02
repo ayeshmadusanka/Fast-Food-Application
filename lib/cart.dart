@@ -1,10 +1,11 @@
+import 'package:ai_project/orders.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'menu.dart';
 import 'config.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:intl/intl.dart'; // Import for formatting date
 
 void main() {
   runApp(MaterialApp(
@@ -28,52 +29,71 @@ class _CartPageState extends State<CartPage> {
 
   Future<void> placeOrder() async {
     final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getString('userId'); // Assuming you have userId stored in SharedPreferences
+    final userId = prefs.getString('userId'); // Retrieve user ID
+
     if (userId == null) {
-      // Handle the case where userId is not found
       print('User ID is not available');
       return;
     }
 
-    // Prepare the order data
+    // Prepare order data with item_id instead of title
     List<Map<String, dynamic>> orderItems = cartItems.map((item) {
       return {
-        'title': item.title,
+        'item_id': item.itemId, // now sending item_id
         'price': item.price,
         'quantity': item.quantity,
       };
     }).toList();
 
+    // Get current date and time in 'YYYY-MM-DD HH:mm:ss' format
+    String orderDate = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+
     Map<String, dynamic> orderData = {
       'user_id': userId,
       'order_items': orderItems,
-      'total_price': calculateTotal(), // Assuming the total is calculated
+      'total_price': calculateTotal(),
+      'order_date': orderDate,
     };
 
-    // Convert the order data to JSON
+    // Convert order data to JSON
     String jsonOrderData = json.encode(orderData);
 
-    // Your base URL (replace with the actual URL)
+    // Log the request being sent
+    print('Sending order data: $jsonOrderData');
 
     try {
       final response = await http.post(
-        Uri.parse('https://arogyahospital.online/bread/api/add_order.php'), // Concatenate baseUrl with the endpoint
+        Uri.parse('https://bread.ayeshmadusanka.site/api/add_order.php'),
         headers: {'Content-Type': 'application/json'},
         body: jsonOrderData,
       );
 
+      // Log the raw response body
+      print('Server response (${response.statusCode}): ${response.body}');
+
       if (response.statusCode == 200) {
-        // Handle the response from the server
         var responseData = json.decode(response.body);
-        if (responseData['status'] == 'success') {
-          // Successfully placed the order, handle accordingly
+        if (responseData['success'] == true) {
+          // Clear the cart after a successful order
+          setState(() {
+            cartItems.clear();
+          });
+
+          // Remove the saved cart from SharedPreferences
+          await prefs.remove('cart');
           print('Order placed successfully');
-        } else {
-          // Handle failure
+
+          // Navigate to MyOrdersScreen
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => MyOrdersScreen()),
+          );
+        }
+        else {
           print('Order failed: ${responseData['message']}');
         }
       } else {
-        print('Failed to place order: ${response.statusCode}');
+        print('Failed to place order. HTTP Status: ${response.statusCode}');
       }
     } catch (e) {
       print('Error placing order: $e');
@@ -94,7 +114,7 @@ class _CartPageState extends State<CartPage> {
     });
 
     // Debug log to check if the cartItems list is updated correctly
-    print('Cart items after loading: ${cartItems.map((item) => item.title).toList()}');
+    print('Cart items after loading: ${cartItems.map((item) => item.itemId).toList()}');
   }
 
   // Save cart to SharedPreferences
@@ -293,12 +313,14 @@ class _CartPageState extends State<CartPage> {
 }
 
 class CartItemData {
+  final int itemId; // New property for the item identifier
   final String imagePath;
   final String title;
   final double price;
   int quantity;
 
   CartItemData({
+    required this.itemId,
     required this.imagePath,
     required this.title,
     required this.price,
@@ -308,6 +330,7 @@ class CartItemData {
   // Convert CartItemData to a JSON map
   Map<String, dynamic> toJson() {
     return {
+      'item_id': itemId,
       'imagePath': imagePath,
       'title': title,
       'price': price,
@@ -318,6 +341,7 @@ class CartItemData {
   // Create CartItemData from a JSON map with null checks
   factory CartItemData.fromJson(Map<String, dynamic> json) {
     return CartItemData(
+      itemId: json['item_id'] ?? 0,
       imagePath: json['imagePath'] ?? '',
       title: json['title'] ?? '',
       price: json['price'] is String ? double.tryParse(json['price']) ?? 0.0 : json['price'] ?? 0.0,
@@ -372,8 +396,6 @@ class CartItem extends StatelessWidget {
                   height: 80,
                   fit: BoxFit.contain,
                 ),
-
-
                 SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -437,4 +459,3 @@ class CartItem extends StatelessWidget {
     );
   }
 }
-

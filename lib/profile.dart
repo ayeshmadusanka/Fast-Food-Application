@@ -1,7 +1,9 @@
+import 'package:ai_project/orders.dart';
 import 'package:flutter/material.dart';
 import 'loyality.dart'; // Import loyalty.dart
 import 'login.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'orders.dart';
 
 
 class ProfileScreen extends StatefulWidget {
@@ -139,6 +141,10 @@ class _ProfileScreenState extends State<ProfileScreen> with TickerProviderStateM
                   opacity: _fadeAnimation,
                   child: GestureDetector(
                     onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => MyOrdersScreen()),
+                      );
                       // Handle Orders tap
                     },
                     child: ListTile(

@@ -1,4 +1,4 @@
-name: bread_and_butter
+name: ai_project
 description: "A new Flutter project."
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
@@ -11,9 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.6
-  webview_flutter: ^4.0.7
   http: ^1.2.2
   shared_preferences: ^2.0.15
+  intl: ^0.20.2
 
 dev_dependencies:
   flutter_test:

@@ -1,8 +1,13 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'config.dart'; // Ensure baseUrl and imageUrl are defined here
 import 'profile.dart';
 import 'menu.dart';
 import 'offers.dart';
 import 'cart.dart';
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
 
@@ -18,6 +23,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   final PageController _pageController = PageController(); // Add PageController
   int _currentPageIndex = 0; // Track the current page index
+  int _currentIndex = 0; // For bottom navigation
+
+  // List to store recommended items details
+  List<dynamic> _recommendedItems = [];
+  bool _isLoadingRecommendations = true;
 
   @override
   void initState() {
@@ -25,8 +35,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _controller = AnimationController(
       duration: const Duration(milliseconds: 1000),
       vsync: this,
-    )
-      ..forward();
+    )..forward();
 
     // For text (slide in from right)
     _textSlideAnimation = Tween<Offset>(
@@ -43,6 +52,77 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _controller, curve: Curves.easeOut),
     );
+
+    // Fetch recommendations when screen initializes
+    _fetchRecommendations();
+  }
+
+  Future<void> _fetchRecommendations() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('userId');
+    if (userId == null) {
+      print('User ID is not available');
+      setState(() {
+        _isLoadingRecommendations = false;
+      });
+      return;
+    }
+
+    try {
+      // Call the recommendations API
+      final recUrl = 'https://model.ayeshmadusanka.site/recommendations/$userId';
+      final recResponse = await http.get(Uri.parse(recUrl));
+      print('Recommendations Response: ${recResponse.body}');
+
+      if (recResponse.statusCode == 200) {
+        final recData = json.decode(recResponse.body);
+        List<dynamic> recommendations = recData['recommendations'];
+        if (recommendations.isNotEmpty) {
+          // Build comma-separated string of IDs
+          final ids = recommendations.join(',');
+          // Call the item details API with the recommended IDs
+          final detailsUrl = '$baseUrl/get_item_details.php?ids=$ids';
+          final detailsResponse = await http.get(Uri.parse(detailsUrl));
+          print('Item Details Response: ${detailsResponse.body}');
+
+          if (detailsResponse.statusCode == 200) {
+            List<dynamic> items = json.decode(detailsResponse.body);
+            // Replace the relative image path prefix with the baseUrl
+            items = items.map((item) {
+              String imagePath = item['image_path'];
+              // Remove any "../" and prepend baseUrl
+              imagePath = imagePath.replaceAll('../', '');
+              item['image_path'] = '$imageUrl/$imagePath';
+              return item;
+            }).toList();
+            setState(() {
+              _recommendedItems = items;
+              _isLoadingRecommendations = false;
+            });
+          } else {
+            print('Failed to load item details');
+            setState(() {
+              _isLoadingRecommendations = false;
+            });
+          }
+        } else {
+          print('No recommendations available');
+          setState(() {
+            _isLoadingRecommendations = false;
+          });
+        }
+      } else {
+        print('Failed to load recommendations');
+        setState(() {
+          _isLoadingRecommendations = false;
+        });
+      }
+    } catch (e) {
+      print('Error fetching recommendations: $e');
+      setState(() {
+        _isLoadingRecommendations = false;
+      });
+    }
   }
 
   @override
@@ -67,12 +147,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               const SizedBox(height: 16),
               _buildAnimatedText(_buildCarouselIndicators()),
               const SizedBox(height: 16),
-              _buildAnimatedText(_buildSectionTitle('   Special Menu')),
+              _buildAnimatedText(_buildSectionTitle('    Recommendations')),
               const SizedBox(height: 16),
-              _buildAnimatedImage(_buildMenuRow()),
+              _buildAnimatedImage(_buildRecommendationsWidget()),
               const SizedBox(height: 16),
-              _buildAnimatedText(
-                  _buildSectionTitle("   This Week's Highlight")),
+              _buildAnimatedText(_buildSectionTitle("   This Week's Highlight")),
               const SizedBox(height: 16),
               _buildAnimatedImage(_buildHighlightContainer()),
             ],
@@ -108,10 +187,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.only(top: 40.0),
-      // Add 12px padding from the top
       child: FractionallySizedBox(
-        alignment: Alignment.center, // Center the search bar
-        widthFactor: 0.98, // Reduce the width by 20%
+        alignment: Alignment.center,
+        widthFactor: 0.98,
         child: TextField(
           decoration: InputDecoration(
             filled: true,
@@ -122,8 +200,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide.none,
             ),
-            contentPadding: const EdgeInsets.symmetric(
-                vertical: 12, horizontal: 16), // Internal padding
+            contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
           ),
         ),
       ),
@@ -154,10 +231,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         SizedBox(
           height: 120,
           child: PageView(
-            controller: _pageController, // Attach PageController
+            controller: _pageController,
             onPageChanged: (index) {
               setState(() {
-                _currentPageIndex = index; // Update current page index
+                _currentPageIndex = index;
               });
             },
             children: [
@@ -194,8 +271,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             Icons.circle,
             size: 8,
             color: index == _currentPageIndex
-                ? Colors.orange[800] // Highlight the current page
-                : Colors.orange[300], // Lighter color for other pages
+                ? Colors.orange[800]
+                : Colors.orange[300],
           ),
         );
       }),
@@ -204,7 +281,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Widget _buildSectionTitle(String title) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      mainAxisAlignment: MainAxisAlignment.start,
       children: [
         Text(
           title,
@@ -217,29 +294,57 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildMenuRow() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        _buildMenuCard('assets/menu1.jpg'),
-        _buildMenuCard('assets/menu2.jpg'),
-        _buildMenuCard('assets/menu3.jpg'),
-      ],
-    );
-  }
-
-  Widget _buildMenuCard(String imagePath) {
-    return Container(
-      width: 100,
-      height: 100,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        image: DecorationImage(
-          image: AssetImage(imagePath),
-          fit: BoxFit.cover,
+  // Recommendations widget updated for better layout and UX
+  Widget _buildRecommendationsWidget() {
+    if (_isLoadingRecommendations) {
+      return const Center(child: CircularProgressIndicator());
+    } else if (_recommendedItems.isEmpty) {
+      return const Center(child: Text('No recommendations available'));
+    } else {
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: _recommendedItems.map((item) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Display the image using the updated image path
+                  Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      image: DecorationImage(
+                        image: NetworkImage(item['image_path']),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  // Display the item name with wrapping and a smaller font
+                  Container(
+                    width: 100,
+                    child: Text(
+                      item['name'],
+                      textAlign: TextAlign.center,
+                      softWrap: true,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
         ),
-      ),
-    );
+      );
+    }
   }
 
   Widget _buildHighlightContainer() {
@@ -258,8 +363,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  int _currentIndex = 0; // Track the selected index
-
   Widget _buildBottomNavigationBar() {
     return BottomNavigationBar(
       type: BottomNavigationBarType.fixed,
@@ -267,33 +370,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       selectedItemColor: Colors.white,
       unselectedItemColor: Colors.white60,
       currentIndex: _currentIndex,
-      // Highlight the selected tab
       onTap: (index) {
         setState(() {
-          _currentIndex = index; // Update the selected index
+          _currentIndex = index;
         });
-
-        // Handle navigation based on the selected index
         if (index == 2) {
-          // Navigate to Profile Screen
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => ProfileScreen()),
           );
         } else if (index == 3) {
-          // Navigate to Menu Screen
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => MenuPage()),
           );
         } else if (index == 1) {
-          // Navigate to Offers Screen
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => OffersPage()),
           );
         } else if (index == 4) {
-          // Navigate to Cart Screen
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => CartPage()),
